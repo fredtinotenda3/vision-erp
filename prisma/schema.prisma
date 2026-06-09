@@ -1,0 +1,1029 @@
+// ============================================================
+// VISION ERP - Enterprise Optometry ERP
+// Prisma Schema v1.0
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  OPTOMETRIST
+  RECEPTIONIST
+  DISPENSER
+  FINANCE
+  LAB_TECHNICIAN
+  READONLY
+}
+
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum ContactPref {
+  PHONE
+  POST
+  SMS
+  EMAIL
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  MISSED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum AppointmentType {
+  EYE_EXAM
+  CONTACT_LENS_EXAM
+  FOLLOW_UP
+  COLLECTION
+  REPAIR
+  EMERGENCY
+  RECALL
+  OTHER
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  IN_LAB
+  READY
+  DISPENSED
+  CANCELLED
+  ON_HOLD
+  RETURNED
+}
+
+enum OrderType {
+  SPECTACLES
+  CONTACT_LENS
+  SUNGLASSES
+  ACCESSORIES
+  REPAIR
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  STANDING_ORDER
+  DIRECT_DEBIT
+  VOUCHER
+  INSURANCE
+  MIXED
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  REFUNDED
+  WRITTEN_OFF
+}
+
+enum RecallType {
+  ROUTINE
+  CONTACT_LENS
+  GLAUCOMA
+  DIABETIC
+  MEDICAL
+  CUSTOM
+}
+
+enum RecallStatus {
+  PENDING
+  SENT
+  RESPONDED
+  EXPIRED
+  OPTED_OUT
+}
+
+enum RecallMethod {
+  SMS
+  EMAIL
+  POST
+  PHONE
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  RETURN
+  TRANSFER
+  WRITE_OFF
+  INITIAL
+}
+
+enum LabOrderStatus {
+  RECEIVED
+  IN_PROGRESS
+  QUALITY_CHECK
+  DISPATCHED
+  DELIVERED
+  REJECTED
+  ON_HOLD
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  PRINT
+  ACCESS_DENIED
+}
+
+enum Title {
+  MR
+  MRS
+  MS
+  MISS
+  DR
+  PROF
+  REV
+  OTHER
+}
+
+// ============================================================
+// CORE USER / AUTH
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(RECEPTIONIST)
+  practiceId    String?
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  mustChangePassword Boolean @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  practice      Practice?    @relation(fields: [practiceId], references: [id])
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  appointments  Appointment[] @relation("AssignedOptometrist")
+  staffRota     StaffRota[]
+  performance   StaffPerformance[]
+  createdPatients Patient[] @relation("CreatedBy")
+
+  @@index([email])
+  @@index([practiceId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model Practice {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  address     String
+  town        String
+  county      String?
+  postcode    String
+  phone       String
+  email       String?
+  vatNumber   String?
+  regNumber   String?
+  logoUrl     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  patients    Patient[]
+  appointments Appointment[]
+  orders      Order[]
+  sales       Sale[]
+  inventory   StockItem[]
+  labOrders   LabOrder[]
+  recalls     Recall[]
+  templates   DocumentTemplate[]
+  pettyCash   PettyCash[]
+  cashReconciliation CashReconciliation[]
+  standingOrders StandingOrder[]
+
+  @@index([code])
+}
+
+// ============================================================
+// PATIENT MODULE
+// ============================================================
+
+model Patient {
+  id              String    @id @default(cuid())
+  refNo           String    @unique
+  title           Title     @default(MR)
+  forename        String
+  initial         String?
+  surname         String
+  dob             DateTime
+  sex             Sex
+  address1        String
+  address2        String?
+  town            String
+  county          String?
+  postcode        String
+  homePhone       String?
+  workPhone       String?
+  mobile          String?
+  email           String?
+  occupation      String?
+  nhsNumber       String?
+  gpName          String?
+  gpAddress       String?
+  isKeyPatient    Boolean   @default(false)
+  isStaffRelative Boolean   @default(false)
+  isMemberOfStaff Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  isDeceased      Boolean   @default(false)
+  marketingOptIn  Boolean   @default(true)
+  contactPref     ContactPref[] 
+  notes           String?
+  practiceId      String
+  createdById     String?
+  previousEyeTest DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  practice        Practice  @relation(fields: [practiceId], references: [id])
+  createdBy       User?     @relation("CreatedBy", fields: [createdById], references: [id])
+  prescriptions   Prescription[]
+  appointments    Appointment[]
+  orders          Order[]
+  sales           Sale[]
+  recalls         Recall[]
+  clinicalHistory ClinicalRecord[]
+  debtors         Debtor[]
+  contactLensRx   ContactLensRx[]
+  documents       PatientDocument[]
+
+  @@index([surname, forename])
+  @@index([postcode])
+  @@index([mobile])
+  @@index([nhsNumber])
+  @@index([practiceId])
+  @@index([refNo])
+}
+
+model Prescription {
+  id            String   @id @default(cuid())
+  patientId     String
+  examinedById  String?
+  examinedAt    DateTime @default(now())
+  
+  // Right Eye
+  rSphere       Float?
+  rCylinder     Float?
+  rAxis         Int?
+  rAdd          Float?
+  rPrism        Float?
+  rBase         String?
+  rVa           String?
+  rBvd          Float?
+  
+  // Left Eye
+  lSphere       Float?
+  lCylinder     Float?
+  lAxis         Int?
+  lAdd          Float?
+  lPrism        Float?
+  lBase         String?
+  lVa           String?
+  lBvd          Float?
+  
+  // Binocular
+  ipd           Float?
+  ipdNear       Float?
+  
+  notes         String?
+  isFinal       Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  orders        Order[]
+
+  @@index([patientId])
+}
+
+model ContactLensRx {
+  id            String   @id @default(cuid())
+  patientId     String
+  examinedById  String?
+  examinedAt    DateTime @default(now())
+
+  // Right
+  rBrand        String?
+  rBaseCurve    Float?
+  rDiameter     Float?
+  rSphere       Float?
+  rCylinder     Float?
+  rAxis         Int?
+  rAddition     Float?
+  rColour       String?
+  rQuantity     Int?
+
+  // Left
+  lBrand        String?
+  lBaseCurve    Float?
+  lDiameter     Float?
+  lSphere       Float?
+  lCylinder     Float?
+  lAxis         Int?
+  lAddition     Float?
+  lColour       String?
+  lQuantity     Int?
+
+  wearingSchedule String?
+  replacementSchedule String?
+  solution      String?
+  notes         String?
+  isFinal       Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patient       Patient  @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+}
+
+// ============================================================
+// CLINICAL MODULE
+// ============================================================
+
+model ClinicalRecord {
+  id            String   @id @default(cuid())
+  patientId     String
+  examinedById  String
+  examinedAt    DateTime @default(now())
+  type          String   // EYE_EXAM, CL_EXAM, etc.
+  
+  // Ocular History
+  ocularHistory String?
+  medicalHistory String?
+  familyHistory String?
+  currentMedication String?
+  allergies     String?
+  
+  // Chief Complaint
+  chiefComplaint String?
+  
+  // Entrance Tests
+  vaDistanceR   String?
+  vaDistanceL   String?
+  vaDistanceBino String?
+  vaNearR       String?
+  vaNearL       String?
+  vaNearBino    String?
+  coverTest     String?
+  motility      String?
+  pupils        String?
+  
+  // Refraction
+  subjectiveRx  Json?
+  objectiveRx   Json?
+  finalRx       Json?
+  
+  // Anterior Segment
+  anteriorSegment Json?
+  
+  // Posterior Segment  
+  posteriorSegment Json?
+  
+  // IOP
+  iopRight      Float?
+  iopLeft       Float?
+  iopMethod     String?
+  
+  // Fields
+  visualFields  Json?
+  
+  // Management Plan
+  managementPlan String?
+  
+  // Recall
+  recallPeriod  Int?   // months
+  recallReason  String?
+  
+  clinicalNotes String?
+  isComplete    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patient       Patient  @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@index([examinedById])
+  @@index([examinedAt])
+}
+
+// ============================================================
+// APPOINTMENT MODULE
+// ============================================================
+
+model Room {
+  id          String   @id @default(cuid())
+  practiceId  String?
+  name        String
+  color       String   @default("#3B82F6")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  appointments Appointment[]
+}
+
+model Appointment {
+  id            String            @id @default(cuid())
+  patientId     String
+  practiceId    String
+  optometristId String?
+  roomId        String?
+  type          AppointmentType   @default(EYE_EXAM)
+  status        AppointmentStatus @default(SCHEDULED)
+  startTime     DateTime
+  endTime       DateTime
+  duration      Int               // minutes
+  notes         String?
+  reason        String?
+  isNew         Boolean           @default(false)
+  reminderSent  Boolean           @default(false)
+  reminderSentAt DateTime?
+  arrivalTime   DateTime?
+  completedAt   DateTime?
+  cancelReason  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  patient       Patient           @relation(fields: [patientId], references: [id])
+  practice      Practice          @relation(fields: [practiceId], references: [id])
+  optometrist   User?             @relation("AssignedOptometrist", fields: [optometristId], references: [id])
+  room          Room?             @relation(fields: [roomId], references: [id])
+
+  @@index([patientId])
+  @@index([practiceId])
+  @@index([optometristId])
+  @@index([startTime])
+  @@index([status])
+}
+
+model StaffRota {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime
+  startTime   String
+  endTime     String
+  isAvailable Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([date])
+}
+
+// ============================================================
+// ORDERS / DISPENSING MODULE
+// ============================================================
+
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  accountNo   String?
+  vatNo       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stockItems  StockItem[]
+  labOrders   LabOrder[]
+  purchases   StockMovement[]
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  orderNo         String        @unique
+  patientId       String
+  practiceId      String
+  prescriptionId  String?
+  type            OrderType     @default(SPECTACLES)
+  status          OrderStatus   @default(PENDING)
+  
+  // Frame details
+  frameBrand      String?
+  frameModel      String?
+  frameColor      String?
+  frameSize       String?
+  frameCost       Float?        @default(0)
+  frameRetail     Float?        @default(0)
+  
+  // Lens details
+  lensType        String?
+  lensMaterial    String?
+  lensCoating     String?
+  lensTint        String?
+  lensCost        Float?        @default(0)
+  lensRetail      Float?        @default(0)
+  
+  // Pricing
+  subtotal        Float         @default(0)
+  discount        Float         @default(0)
+  vatAmount       Float         @default(0)
+  totalAmount     Float         @default(0)
+  depositPaid     Float         @default(0)
+  balanceDue      Float         @default(0)
+  
+  // Payment
+  paymentMethod   PaymentMethod?
+  paymentStatus   PaymentStatus @default(PENDING)
+  
+  // Lab
+  labOrderId      String?
+  
+  // Dates
+  orderDate       DateTime      @default(now())
+  promisedDate    DateTime?
+  completedDate   DateTime?
+  dispensedDate   DateTime?
+  
+  notes           String?
+  internalNotes   String?
+  createdById     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  patient         Patient       @relation(fields: [patientId], references: [id])
+  practice        Practice      @relation(fields: [practiceId], references: [id])
+  prescription    Prescription? @relation(fields: [prescriptionId], references: [id])
+  labOrder        LabOrder?     @relation(fields: [labOrderId], references: [id])
+  payments        Payment[]
+
+  @@index([patientId])
+  @@index([practiceId])
+  @@index([status])
+  @@index([orderNo])
+  @@index([orderDate])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  orderId       String?
+  saleId        String?
+  amount        Float
+  method        PaymentMethod
+  reference     String?
+  notes         String?
+  receivedById  String?
+  receivedAt    DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+
+  order         Order?        @relation(fields: [orderId], references: [id])
+  sale          Sale?         @relation(fields: [saleId], references: [id])
+
+  @@index([orderId])
+  @@index([saleId])
+}
+
+// ============================================================
+// SALES MODULE
+// ============================================================
+
+model Sale {
+  id            String        @id @default(cuid())
+  saleNo        String        @unique
+  patientId     String?
+  practiceId    String
+  type          String        @default("COUNTER") // COUNTER, ORDER, ONLINE
+  
+  subtotal      Float         @default(0)
+  discount      Float         @default(0)
+  vatAmount     Float         @default(0)
+  totalAmount   Float         @default(0)
+  
+  paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus @default(PENDING)
+  
+  notes         String?
+  createdById   String?
+  voidedAt      DateTime?
+  voidReason    String?
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  patient       Patient?      @relation(fields: [patientId], references: [id])
+  practice      Practice      @relation(fields: [practiceId], references: [id])
+  items         SaleItem[]
+  payments      Payment[]
+
+  @@index([patientId])
+  @@index([practiceId])
+  @@index([saleNo])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id          String   @id @default(cuid())
+  saleId      String
+  stockItemId String?
+  description String
+  quantity    Int      @default(1)
+  unitCost    Float    @default(0)
+  unitPrice   Float
+  discount    Float    @default(0)
+  vatRate     Float    @default(0)
+  total       Float
+
+  sale        Sale     @relation(fields: [saleId], references: [id])
+  stockItem   StockItem? @relation(fields: [stockItemId], references: [id])
+
+  @@index([saleId])
+}
+
+// ============================================================
+// INVENTORY MODULE
+// ============================================================
+
+model StockCategory {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+
+  items       StockItem[]
+}
+
+model StockItem {
+  id            String   @id @default(cuid())
+  sku           String   @unique
+  barcode       String?  @unique
+  name          String
+  description   String?
+  categoryId    String?
+  supplierId    String?
+  practiceId    String
+  
+  costPrice     Float    @default(0)
+  retailPrice   Float    @default(0)
+  vatRate       Float    @default(20)
+  
+  currentStock  Int      @default(0)
+  minStock      Int      @default(0)
+  maxStock      Int?
+  reorderPoint  Int      @default(5)
+  reorderQty    Int      @default(10)
+  
+  location      String?
+  isActive      Boolean  @default(true)
+  isService     Boolean  @default(false)
+  trackStock    Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category      StockCategory? @relation(fields: [categoryId], references: [id])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  practice      Practice       @relation(fields: [practiceId], references: [id])
+  movements     StockMovement[]
+  saleItems     SaleItem[]
+
+  @@index([sku])
+  @@index([practiceId])
+  @@index([categoryId])
+  @@index([currentStock])
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  stockItemId String
+  supplierId  String?
+  type        StockMovementType
+  quantity    Int
+  costPrice   Float?
+  reference   String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime          @default(now())
+
+  stockItem   StockItem         @relation(fields: [stockItemId], references: [id])
+  supplier    Supplier?         @relation(fields: [supplierId], references: [id])
+
+  @@index([stockItemId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================================
+// LAB MODULE
+// ============================================================
+
+model LabOrder {
+  id            String        @id @default(cuid())
+  labOrderNo    String        @unique
+  practiceId    String
+  supplierId    String?
+  status        LabOrderStatus @default(RECEIVED)
+  
+  rxRight       Json?
+  rxLeft        Json?
+  
+  lensType      String?
+  lensMaterial  String?
+  lensCoating   String?
+  lensTint      String?
+  
+  frameRef      String?
+  frameSize     String?
+  
+  urgency       String        @default("NORMAL") // NORMAL, URGENT, EMERGENCY
+  specialInstructions String?
+  
+  sentToLabAt   DateTime?
+  estimatedReturn DateTime?
+  receivedAt    DateTime?
+  
+  cost          Float?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  practice      Practice      @relation(fields: [practiceId], references: [id])
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id])
+  orders        Order[]
+  tracking      LabTracking[]
+
+  @@index([practiceId])
+  @@index([status])
+  @@index([labOrderNo])
+}
+
+model LabTracking {
+  id          String   @id @default(cuid())
+  labOrderId  String
+  status      LabOrderStatus
+  notes       String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+
+  labOrder    LabOrder @relation(fields: [labOrderId], references: [id])
+
+  @@index([labOrderId])
+}
+
+// ============================================================
+// RECALL MODULE
+// ============================================================
+
+model RecallConfig {
+  id              String       @id @default(cuid())
+  practiceId      String?
+  type            RecallType
+  intervalMonths  Int          @default(24)
+  methods         RecallMethod[]
+  template        String?
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model Recall {
+  id            String       @id @default(cuid())
+  patientId     String
+  practiceId    String
+  type          RecallType   @default(ROUTINE)
+  status        RecallStatus @default(PENDING)
+  method        RecallMethod @default(SMS)
+  dueDate       DateTime
+  sentAt        DateTime?
+  respondedAt   DateTime?
+  response      String?
+  message       String?
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  patient       Patient      @relation(fields: [patientId], references: [id])
+  practice      Practice     @relation(fields: [practiceId], references: [id])
+
+  @@index([patientId])
+  @@index([practiceId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+// ============================================================
+// FINANCE MODULE
+// ============================================================
+
+model Debtor {
+  id            String        @id @default(cuid())
+  patientId     String
+  orderId       String?
+  amount        Float
+  paid          Float         @default(0)
+  balance       Float
+  dueDate       DateTime?
+  status        PaymentStatus @default(PENDING)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  patient       Patient       @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model PettyCash {
+  id          String   @id @default(cuid())
+  practiceId  String
+  description String
+  amount      Float
+  isExpense   Boolean  @default(true)
+  category    String?
+  reference   String?
+  receipt     String?
+  createdById String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  practice    Practice @relation(fields: [practiceId], references: [id])
+
+  @@index([practiceId])
+  @@index([date])
+}
+
+model CashReconciliation {
+  id              String   @id @default(cuid())
+  practiceId      String
+  date            DateTime
+  openingBalance  Float    @default(0)
+  cashSales       Float    @default(0)
+  cardSales       Float    @default(0)
+  otherSales      Float    @default(0)
+  totalSales      Float    @default(0)
+  cashIn          Float    @default(0)
+  cashOut         Float    @default(0)
+  closingBalance  Float    @default(0)
+  variance        Float    @default(0)
+  notes           String?
+  reconciledById  String?
+  createdAt       DateTime @default(now())
+
+  practice        Practice @relation(fields: [practiceId], references: [id])
+
+  @@index([practiceId])
+  @@index([date])
+}
+
+model StandingOrder {
+  id            String        @id @default(cuid())
+  practiceId    String
+  patientId     String?
+  type          String        // SO or DD
+  reference     String        @unique
+  amount        Float
+  frequency     String        // WEEKLY, MONTHLY, etc.
+  startDate     DateTime
+  endDate       DateTime?
+  status        String        @default("ACTIVE")
+  nextDue       DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  practice      Practice      @relation(fields: [practiceId], references: [id])
+
+  @@index([practiceId])
+  @@index([reference])
+}
+
+// ============================================================
+// STAFF PERFORMANCE
+// ============================================================
+
+model StaffPerformance {
+  id            String   @id @default(cuid())
+  userId        String
+  date          DateTime
+  examsCount    Int      @default(0)
+  salesAmount   Float    @default(0)
+  ordersCount   Int      @default(0)
+  missedAppts   Int      @default(0)
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([date])
+}
+
+// ============================================================
+// DOCUMENTS / TEMPLATES
+// ============================================================
+
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  practiceId  String?
+  name        String
+  type        String   // RECALL, LETTER, INVOICE, REPORT
+  subject     String?
+  body        String
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  practice    Practice? @relation(fields: [practiceId], references: [id])
+}
+
+model PatientDocument {
+  id          String   @id @default(cuid())
+  patientId   String
+  name        String
+  type        String
+  url         String
+  size        Int?
+  uploadedById String?
+  createdAt   DateTime @default(now())
+
+  patient     Patient  @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String?
+  action      AuditAction
+  entity      String
+  entityId    String?
+  oldData     Json?
+  newData     Json?
+  ipAddress   String?
+  userAgent   String?
+  message     String?
+  createdAt   DateTime    @default(now())
+
+  user        User?       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([createdAt])
+}
