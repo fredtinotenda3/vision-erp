@@ -1,6 +1,11 @@
 // ============================================================
 // VISION ERP - Patients API Route
 // app/api/patients/route.ts
+// ------------------------------------------------------------
+// FIX: searchParams.get() returns `null` for absent keys, which
+// fails PatientSearchSchema's `.optional()` (undefined-only)
+// fields and produced a 400 on every plain list request.
+// Now normalised via readParams() (null -> undefined).
 // ============================================================
 
 import { NextRequest } from "next/server";
@@ -15,6 +20,7 @@ import {
   apiError,
   apiServerError,
 } from "@/lib/utils";
+import { readParams } from "@/lib/query-params";
 
 // ============================================================
 // GET /api/patients — Search & list patients
@@ -25,19 +31,21 @@ export async function GET(req: NextRequest) {
     try {
       const { searchParams } = req.nextUrl;
 
-      const parsed = PatientSearchSchema.safeParse({
-        search: searchParams.get("search"),
-        surname: searchParams.get("surname"),
-        forename: searchParams.get("forename"),
-        dob: searchParams.get("dob"),
-        postcode: searchParams.get("postcode"),
-        refNo: searchParams.get("refNo"),
-        phone: searchParams.get("phone"),
-        page: searchParams.get("page"),
-        pageSize: searchParams.get("pageSize"),
-        sortBy: searchParams.get("sortBy"),
-        sortOrder: searchParams.get("sortOrder"),
-      });
+      const parsed = PatientSearchSchema.safeParse(
+        readParams(searchParams, [
+          "search",
+          "surname",
+          "forename",
+          "dob",
+          "postcode",
+          "refNo",
+          "phone",
+          "page",
+          "pageSize",
+          "sortBy",
+          "sortOrder",
+        ])
+      );
 
       if (!parsed.success) {
         return apiError("Invalid query parameters", 400, parsed.error.flatten().fieldErrors);
@@ -48,10 +56,7 @@ export async function GET(req: NextRequest) {
         return apiError("Practice ID is required", 400);
       }
 
-      const { patients, meta } = await patientService.search(
-        parsed.data,
-        practiceId
-      );
+      const { patients, meta } = await patientService.search(parsed.data, practiceId);
 
       return apiSuccess(patients, undefined, meta);
     } catch {
