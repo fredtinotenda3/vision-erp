@@ -1,8 +1,14 @@
-//FILE: app/layout.tsx
+// ============================================================
+// VISION ERP - Root layout
+// app/layout.tsx
+// ------------------------------------------------------------
+// Updated to mount global Providers (NextAuth + React Query + Toasts).
+// ============================================================
 
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { Providers } from "./providers";
 
 const fontSans = Inter({
   variable: "--font-geist-sans",
@@ -29,7 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${fontSans.variable} ${fontMono.variable} antialiased`}>
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
