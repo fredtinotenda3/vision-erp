@@ -73,12 +73,22 @@ export function getPaginationParams(searchParams: URLSearchParams) {
   return { page, pageSize, skip: (page - 1) * pageSize, search, sortBy, sortOrder };
 }
 
+/**
+ * Build pagination metadata.
+ *
+ * IMPORTANT: Parameter order is (page, pageSize, total) to match every
+ * call site across the service layer (patients, appointments, finance,
+ * inventory, lab, orders, recall, sales, staff, reports). Changing this
+ * order will silently scramble pagination output because all three
+ * arguments are numbers.
+ */
 export function buildPaginationMeta(
-  total: number,
   page: number,
-  pageSize: number
+  pageSize: number,
+  total: number
 ): PaginationMeta {
-  const totalPages = Math.ceil(total / pageSize);
+  const safePageSize = pageSize > 0 ? pageSize : 1;
+  const totalPages = Math.ceil(total / safePageSize);
   return {
     total,
     page,

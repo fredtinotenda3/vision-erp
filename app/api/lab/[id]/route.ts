@@ -1,12 +1,12 @@
 // ============================================================
-// VISION ERP - Clinical Record by ID
-// app/api/clinical/[id]/route.ts
+// VISION ERP - Lab Order by ID
+// app/api/lab/[id]/route.ts
 // ============================================================
 
 import { NextRequest } from "next/server";
 import { withPermission, createAuditLog } from "@/middleware/auth.middleware";
-import { clinicalService } from "@/modules/clinical/clinical.service";
-import { CreateClinicalRecordSchema } from "@/modules/clinical/clinical.types";
+import { labService } from "@/modules/lab/lab.service";
+import { UpdateLabOrderSchema } from "@/modules/lab/lab.types";
 import { apiSuccess, apiError, apiNotFound, apiServerError } from "@/lib/utils";
 
 interface RouteParams {
@@ -14,35 +14,35 @@ interface RouteParams {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  return withPermission(req, "clinical:read", async (ctx) => {
+  return withPermission(req, "lab:read", async (ctx) => {
     try {
       const practiceId = ctx.practiceId ?? req.nextUrl.searchParams.get("practiceId") ?? "";
       if (!practiceId) return apiError("Practice ID required", 400);
 
-      const record = await clinicalService.getRecord(params.id, practiceId);
-      return apiSuccess(record);
+      const order = await labService.getById(params.id, practiceId);
+      return apiSuccess(order);
     } catch (err) {
-      if (err instanceof Error && err.message === "RECORD_NOT_FOUND") return apiNotFound("Clinical record");
+      if (err instanceof Error && err.message === "LAB_ORDER_NOT_FOUND") return apiNotFound("Lab order");
       return apiServerError();
     }
   });
 }
 
-export async function PUT(req: NextRequest, { params }: RouteParams) {
-  return withPermission(req, "clinical:update", async (ctx) => {
+export async function PATCH(req: NextRequest, { params }: RouteParams) {
+  return withPermission(req, "lab:update", async (ctx) => {
     try {
       const practiceId = ctx.practiceId ?? req.nextUrl.searchParams.get("practiceId") ?? "";
       if (!practiceId) return apiError("Practice ID required", 400);
 
       const body = await req.json();
-      const parsed = CreateClinicalRecordSchema.partial().safeParse(body);
+      const parsed = UpdateLabOrderSchema.safeParse(body);
       if (!parsed.success) return apiError("Validation failed", 422, parsed.error.flatten().fieldErrors);
 
-      const record = await clinicalService.updateRecord(params.id, parsed.data, practiceId);
-      await createAuditLog(ctx, "UPDATE", "ClinicalRecord", params.id);
-      return apiSuccess(record, "Record updated");
+      const order = await labService.update(params.id, parsed.data, practiceId);
+      await createAuditLog(ctx, "UPDATE", "LabOrder", params.id);
+      return apiSuccess(order, "Lab order updated");
     } catch (err) {
-      if (err instanceof Error && err.message === "RECORD_NOT_FOUND") return apiNotFound("Clinical record");
+      if (err instanceof Error && err.message === "LAB_ORDER_NOT_FOUND") return apiNotFound("Lab order");
       return apiServerError();
     }
   });
