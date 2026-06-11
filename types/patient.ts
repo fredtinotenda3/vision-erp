@@ -62,6 +62,8 @@ export interface PatientPrescription {
   lCylinder: number | null;
   lAxis: number | null;
   isFinal: boolean;
+  rAdd: number | null;
+  lAdd: number | null;
 }
 
 export interface PatientRecall {

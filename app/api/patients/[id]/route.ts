@@ -1,6 +1,10 @@
 // ============================================================
-// VISION ERP - Patient by ID API Route
+// VISION ERP - Patient [id] API Route
 // app/api/patients/[id]/route.ts
+// ------------------------------------------------------------
+// GET    /api/patients/:id  – fetch single patient with relations
+// PATCH  /api/patients/:id  – update patient
+// DELETE /api/patients/:id  – soft-delete patient
 // ============================================================
 
 import { NextRequest } from "next/server";
@@ -19,40 +23,39 @@ interface RouteParams {
 }
 
 // ============================================================
-// GET /api/patients/[id] — Get patient by ID
+// GET /api/patients/:id
 // ============================================================
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
   return withPermission(req, "patients:read", async (ctx) => {
     try {
       const practiceId = ctx.practiceId ?? req.nextUrl.searchParams.get("practiceId") ?? "";
+      if (!practiceId) return apiError("Practice ID required", 400);
 
-      const profile = await patientService.getProfile(params.id, practiceId);
-
-      return apiSuccess(profile);
+      const patient = await patientService.getById(params.id, practiceId);
+      return apiSuccess(patient);
     } catch (err) {
-      if (err instanceof Error && err.message === "PATIENT_NOT_FOUND") {
+      if (err instanceof Error && err.message === "PATIENT_NOT_FOUND")
         return apiNotFound("Patient");
-      }
       return apiServerError();
     }
   });
 }
 
 // ============================================================
-// PUT /api/patients/[id] — Update patient
+// PATCH /api/patients/:id
 // ============================================================
 
-export async function PUT(req: NextRequest, { params }: RouteParams) {
+export async function PATCH(req: NextRequest, { params }: RouteParams) {
   return withPermission(req, "patients:update", async (ctx) => {
     try {
-      const body = await req.json();
-      const practiceId = ctx.practiceId ?? body.practiceId ?? "";
+      const practiceId = ctx.practiceId ?? "";
+      if (!practiceId) return apiError("Practice ID required", 400);
 
+      const body = await req.json();
       const parsed = UpdatePatientSchema.safeParse(body);
-      if (!parsed.success) {
+      if (!parsed.success)
         return apiError("Validation failed", 422, parsed.error.flatten().fieldErrors);
-      }
 
       const result = await patientService.update(params.id, parsed.data, practiceId);
 
@@ -71,27 +74,27 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         params.id,
         undefined,
         result.patient as object,
-        `Updated patient ${params.id}`
+        `Updated patient ${result.patient?.refNo}`
       );
 
       return apiSuccess(result.patient, "Patient updated successfully");
     } catch (err) {
-      if (err instanceof Error && err.message === "PATIENT_NOT_FOUND") {
+      if (err instanceof Error && err.message === "PATIENT_NOT_FOUND")
         return apiNotFound("Patient");
-      }
       return apiServerError();
     }
   });
 }
 
 // ============================================================
-// DELETE /api/patients/[id] — Soft delete patient
+// DELETE /api/patients/:id  (soft delete)
 // ============================================================
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   return withPermission(req, "patients:delete", async (ctx) => {
     try {
-      const practiceId = ctx.practiceId ?? req.nextUrl.searchParams.get("practiceId") ?? "";
+      const practiceId = ctx.practiceId ?? "";
+      if (!practiceId) return apiError("Practice ID required", 400);
 
       await patientService.delete(params.id, practiceId);
 
@@ -102,14 +105,13 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
         params.id,
         undefined,
         undefined,
-        `Deleted (deactivated) patient ${params.id}`
+        `Archived patient ${params.id}`
       );
 
-      return apiSuccess(null, "Patient deactivated successfully");
+      return apiSuccess(null, "Patient archived successfully");
     } catch (err) {
-      if (err instanceof Error && err.message === "PATIENT_NOT_FOUND") {
+      if (err instanceof Error && err.message === "PATIENT_NOT_FOUND")
         return apiNotFound("Patient");
-      }
       return apiServerError();
     }
   });

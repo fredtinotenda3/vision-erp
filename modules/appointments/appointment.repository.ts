@@ -1,13 +1,17 @@
+// path: modules/appointments/appointment.repository.ts
 // ============================================================
 // VISION ERP - Appointment Repository
 // modules/appointments/appointment.repository.ts
 // ============================================================
 
 import db from "@/lib/db";
-import { Prisma } from "@prisma/client";
-import { AppointmentQueryInput } from "./appointment.types";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { AppointmentQueryInput, AppointmentCalendarQueryInput } from "./appointment.types";
 
-const appointmentSelect = {
+// Accepts either the singleton client or an interactive transaction client.
+type DbClient = PrismaClient | Prisma.TransactionClient;
+
+export const appointmentSelect = {
   id: true,
   patientId: true,
   practiceId: true,
@@ -22,6 +26,7 @@ const appointmentSelect = {
   reason: true,
   isNew: true,
   reminderSent: true,
+  reminderSentAt: true,
   arrivalTime: true,
   completedAt: true,
   cancelReason: true,
@@ -56,8 +61,9 @@ export const appointmentRepository = {
           lte: new Date(date + "T23:59:59"),
         },
       }),
+      // FIX (A3): include the whole `to` day instead of truncating at UTC midnight.
       ...(!date && from && to && {
-        startTime: { gte: new Date(from), lte: new Date(to) },
+        startTime: { gte: new Date(from), lte: new Date(to + "T23:59:59") },
       }),
     };
 
@@ -75,6 +81,28 @@ export const appointmentRepository = {
     return { appointments, total };
   },
 
+  // Dedicated calendar retrieval - date-range bounded, no pagination,
+  // hard-capped to protect the server as appointment volume grows.
+  async findCalendar(params: AppointmentCalendarQueryInput, practiceId: string) {
+    const { from, to, optometristId, roomId, status, type } = params;
+
+    const where: Prisma.AppointmentWhereInput = {
+      practiceId,
+      startTime: { gte: new Date(from), lte: new Date(to + "T23:59:59") },
+      ...(optometristId && { optometristId }),
+      ...(roomId && { roomId }),
+      ...(status && { status }),
+      ...(type && { type }),
+    };
+
+    return db.appointment.findMany({
+      where,
+      select: appointmentSelect,
+      orderBy: { startTime: "asc" },
+      take: 1000, // safety ceiling; a single practice should never exceed this in one window
+    });
+  },
+
   async findById(id: string, practiceId: string) {
     return db.appointment.findFirst({
       where: { id, practiceId },
@@ -82,34 +110,36 @@ export const appointmentRepository = {
     });
   },
 
-  async create(data: Prisma.AppointmentCreateInput) {
-    return db.appointment.create({ data, select: appointmentSelect });
+  async create(data: Prisma.AppointmentCreateInput, client: DbClient = db) {
+    return client.appointment.create({ data, select: appointmentSelect });
   },
 
-  async update(id: string, data: Prisma.AppointmentUpdateInput) {
-    return db.appointment.update({ where: { id }, data, select: appointmentSelect });
+  async update(id: string, data: Prisma.AppointmentUpdateInput, client: DbClient = db) {
+    return client.appointment.update({ where: { id }, data, select: appointmentSelect });
   },
 
   async delete(id: string) {
     return db.appointment.delete({ where: { id } });
   },
 
-  // Check for booking conflicts
+  // Conflict detection. Accepts a transaction client so the caller can
+  // re-check inside the same transaction as the write (closes the TOCTOU race).
   async checkConflict(
     practiceId: string,
     startTime: Date,
     endTime: Date,
     optometristId?: string | null,
     roomId?: string | null,
-    excludeId?: string
+    excludeId?: string,
+    client: DbClient = db
   ) {
+    // Only meaningful when a shared resource (optometrist or room) is involved.
+    if (!optometristId && !roomId) return null;
+
     const where: Prisma.AppointmentWhereInput = {
       practiceId,
       status: { notIn: ["CANCELLED", "MISSED", "NO_SHOW"] },
-      AND: [
-        { startTime: { lt: endTime } },
-        { endTime: { gt: startTime } },
-      ],
+      AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
       ...(excludeId && { NOT: { id: excludeId } }),
       OR: [
         ...(optometristId ? [{ optometristId }] : []),
@@ -117,10 +147,10 @@ export const appointmentRepository = {
       ],
     };
 
-    // Only check if at least one conflict dimension exists
-    if (!optometristId && !roomId) return null;
-
-    return db.appointment.findFirst({ where, select: { id: true, startTime: true, optometristId: true, roomId: true } });
+    return client.appointment.findFirst({
+      where,
+      select: { id: true, startTime: true, optometristId: true, roomId: true },
+    });
   },
 
   async getMissedAppointments(practiceId: string, from: Date, to: Date) {
@@ -135,18 +165,15 @@ export const appointmentRepository = {
     });
   },
 
+  // Appointments CONSUME rota only. Rota writes are owned by the staff module.
   async getStaffRota(practiceId: string, from: string, to: string) {
     return db.staffRota.findMany({
       where: {
-        date: { gte: new Date(from), lte: new Date(to) },
+        date: { gte: new Date(from), lte: new Date(to + "T23:59:59") },
         user: { practiceId },
       },
       include: { user: { select: { id: true, name: true, role: true } } },
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
     });
-  },
-
-  async upsertStaffRota(data: Prisma.StaffRotaCreateInput) {
-    return db.staffRota.create({ data });
   },
 };

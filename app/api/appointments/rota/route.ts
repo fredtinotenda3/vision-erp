@@ -1,13 +1,17 @@
+// path: app/api/appointments/rota/route.ts
 // ============================================================
-// VISION ERP - Staff Rota API
+// VISION ERP - Staff Rota (read-only, appointments view)
 // app/api/appointments/rota/route.ts
+// ------------------------------------------------------------
+// Appointments CONSUME rota for scheduling context. Rota CREATION
+// and management are owned by the staff module
+// (POST /api/staff/rota). Do not reintroduce a write path here.
 // ============================================================
 
 import { NextRequest } from "next/server";
 import { withPermission } from "@/middleware/auth.middleware";
 import { appointmentService } from "@/modules/appointments/appointment.service";
-import { StaffRotaSchema } from "@/modules/appointments/appointment.types";
-import { apiSuccess, apiError, apiServerError } from "@/lib/utils";
+import { apiSuccess, apiServerError } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
   return withPermission(req, "appointments:read", async (ctx) => {
@@ -18,20 +22,6 @@ export async function GET(req: NextRequest) {
       const to = sp.get("to") ?? from;
       const rota = await appointmentService.getStaffRota(practiceId, from, to);
       return apiSuccess(rota);
-    } catch {
-      return apiServerError();
-    }
-  });
-}
-
-export async function POST(req: NextRequest) {
-  return withPermission(req, "staff:create", async (_ctx) => {
-    try {
-      const body = await req.json();
-      const parsed = StaffRotaSchema.safeParse(body);
-      if (!parsed.success) return apiError("Validation failed", 422, parsed.error.flatten().fieldErrors);
-      const rota = await appointmentService.createStaffRota(parsed.data);
-      return apiSuccess(rota, "Rota entry created", undefined, 201);
     } catch {
       return apiServerError();
     }
